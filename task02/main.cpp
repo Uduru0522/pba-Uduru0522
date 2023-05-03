@@ -40,9 +40,17 @@ void collide_particle_ball(
     Eigen::Vector2f &ball_velo,
     float ball_mass,
     float ball_rad) {
+  // Early return if particle is not contacting the circle   
   if ((p.pos - ball_pos).norm() > ball_rad) { return; }
+
+  // The direction vector from circle to particle
   const Eigen::Vector2f plane_norm = (p.pos - ball_pos).normalized();
+
+  // The actual position of the collision
   const Eigen::Vector2f plane_org = ball_pos + plane_norm * ball_rad;
+
+  // Calaulate how the distance between particle and collision position, 
+  // and reflect the particle back to the outside of the circle
   float height = (p.pos - plane_org).dot(plane_norm);
   p.pos -= height * 2 * plane_norm;
 
@@ -56,13 +64,22 @@ void collide_particle_ball(
   //             no friction. You do not need to change the positions.
 
   // comment out the line below
-  p.velo -= 2.f * (p.velo - ball_velo).dot(plane_norm) * plane_norm;
+  // p.velo -= 2.f * (p.velo - ball_velo).dot(plane_norm) * plane_norm;
 
   // write a few lines of code to compute the velocity of ball and particle
   // please uncomment the lines below
-  // const Eigen::Vector2f impulse =
-  // p.velo +=
-  // ball_velo +=
+
+  // Relative velocity of circle and particle
+  const Eigen::Vector2f rv = p.velo - ball_velo;
+
+  // Impluse of collision
+  const Eigen::Vector2f impulse = -(2.f * particle_mass * ball_mass / (particle_mass + ball_mass)) * 
+                                  rv.dot(plane_norm) * plane_norm;
+
+  // Get new velocity of both object
+  p.velo += impulse / particle_mass;
+  ball_velo -= impulse / ball_mass;
+  return;
 }
 
 /**
