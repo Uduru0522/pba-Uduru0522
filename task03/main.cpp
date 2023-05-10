@@ -165,23 +165,26 @@ void set_force_accelerated(
 	// compute the center of the gravity
 	for (unsigned int ix = 0; ix < num_div; ++ix) {
 		for (unsigned int iy = 0; iy < num_div; ++iy) {
+			// Index of current operating grid
+			const unsigned int grid_idx = iy * num_div + ix;
+
 			// Initialize gravity force value
-			acc.grid2cg[iy * num_div + ix].setZero();
+			acc.grid2cg[grid_idx].setZero();
 
 			// Sum all particl position within grid
-			for (unsigned int idx = acc.grid2idx[iy * num_div + ix]; idx < acc.grid2idx[iy * num_div + ix + 1]; ++idx) {
+			for (unsigned int idx = acc.grid2idx[grid_idx]; idx < acc.grid2idx[grid_idx + 1]; ++idx) {
 				unsigned int ip = acc.idx2pgi[idx].particle_idx;
 				acc.grid2cg[iy * num_div + ix] += particles[ip].pos;
 			}
 
 			// Early continue if no particle in grid
-			unsigned int np = acc.grid2idx[iy * num_div + ix + 1] - acc.grid2idx[iy * num_div + ix];
+			unsigned int np = acc.grid2idx[grid_idx + 1] - acc.grid2idx[grid_idx];
 			if (np == 0) {
 				continue;
 			}
 
 			// Perform division of position
-			acc.grid2cg[iy * num_div + ix] /= static_cast<float>(np);
+			acc.grid2cg[grid_idx] /= static_cast<float>(np);
 		}
 	}
 
@@ -189,21 +192,21 @@ void set_force_accelerated(
 	for (unsigned int ip = 0; ip < particles.size(); ++ip) {
 		// Grid coordinate of particle with index `ip`
 		auto [ix, iy] = pos2grid(particles[ip].pos, box_size, num_div);
-		
+
 		// Initialize gravity force
 		particles[ip].force.setZero();
 
 		// loop over all the grid set force to the particle with index `ip`
 		for (unsigned int jx = 0; jx < num_div; ++jx) {
 			for (unsigned int jy = 0; jy < num_div; ++jy) {
-				if (abs_diff(ix, jx) <= 1 && abs_diff(iy, jy) <= 1) { 
+				if (abs_diff(ix, jx) <= 1 && abs_diff(iy, jy) <= 1) {
 					// Near grids (within 1-grid radius), calculate force individually
 
 					// Loop throught particles within grid
-					const auto gidx = jy * num_div + jx;
-					for (unsigned int idx = acc.grid2idx[gidx]; idx < acc.grid2idx[gidx + 1]; ++idx) {
+					const unsigned int grid_idx = jy * num_div + jx;
+					for (unsigned int idx = acc.grid2idx[grid_idx]; idx < acc.grid2idx[grid_idx + 1]; ++idx) {
 						// Debug: Abort if particle is not assigned to the correct grid index
-						assert(acc.idx2pgi[idx].grid_idx == gidx);
+						assert(acc.idx2pgi[idx].grid_idx == grid_idx);
 
 						// Check particle with particle index
 						unsigned int jp = acc.idx2pgi[idx].particle_idx;
@@ -215,16 +218,28 @@ void set_force_accelerated(
 						assert(pos2grid(particles[jp].pos, box_size, num_div)[0] == jx);
 						assert(pos2grid(particles[jp].pos, box_size, num_div)[1] == jy);
 
-						// Sum forces from nearby particles
-						particles[ip].force += 
+						// Sum nearby forces to particles
+						particles[ip].force +=
 							gravitational_force(particles[jp].pos - particles[ip].pos);
 					}
 				}
-				else { 
+				else {
 					// Far grids, perform far feild approx.
 
-					// write a few lines of code here to compute the force from far grid.
-					// use the center for the gravity of the grid : `acc.grid2cg[jy * num_div + jx]`
+					// Index of current operating grid
+					const unsigned int grid_idx = jy * num_div + jx;
+
+					// Get grid weight
+					const int weight = acc.grid2idx[grid_idx + 1] - acc.grid2idx[grid_idx];
+
+					// Early continue if grid is empty
+					if(!weight){
+						continue;
+					}
+					
+					// Sun approx. force to particle
+					particles[ip].force +=
+							weight * gravitational_force(acc.grid2cg[grid_idx] - particles[ip].pos);
 				}
 			}
 		}
@@ -268,8 +283,8 @@ int main()
 			}
 
 			// switch brute-force/accelerated computation here by uncomment/comment below
-			set_force_bruteforce(particles);
-			// set_force_accelerated(particles, acceleration, box_size, num_div);
+			// set_force_bruteforce(particles);
+			set_force_accelerated(particles, acceleration, box_size, num_div);
 
 			for (auto& p : particles) {
 				// leap frog time integration
